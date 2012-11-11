@@ -1,7 +1,9 @@
-(ns coding.multisets
-  (:use [clojure.string :only (join split)]))
+(ns coding.multisets)
 
 (deftype MultiSet [content cnt]
+  Object
+  (toString [this] (str content))
+  (hashCode [this] (hash content))
   clojure.lang.IPersistentSet
   (seq [this] (if (= 0 cnt)
                 nil
@@ -11,7 +13,7 @@
                      (MultiSet. (assoc content elt (+ count 1)) (+ cnt 1))
                      (MultiSet. (assoc content elt 1) (+ cnt 1))))
   (count [this] cnt)
-  (empty [this] (MultiSet. {} 0))
+  (empty [this] (MultiSet. (array-map) 0))
   (disjoin [this elt] (if-let [count (content elt)]
                         (if (= 1 count)
                           (MultiSet. (dissoc content elt) (- cnt 1))
@@ -34,25 +36,17 @@
         (MultiSet. (assoc content elt n) (+ cnt n))
         this))))
 
-;; (prefer-method print-method clojure.lang.IPersistentSet clojure.lang.IPersistentMap)
-
 (defn multiset
-  ([] (MultiSet. {} 0))
-  ([coll]
-     (cond (map? coll)
-           (MultiSet. coll
-                      (reduce (fn [result [elt cnt]] (+ result cnt))
-                              0
-                              coll))
-           :else (reduce conj (MultiSet. {} 0) coll)))
-  ([elt & elts] (multiset (conj elts elt))))
+  ([] (MultiSet. (array-map) 0))
+  ([elt] (conj (multiset) elt))
+  ([elt & elts] (into (multiset) (conj elts elt))))
 
 (defn union
   ([ms1 ms2]
-     (multiset
-      (reduce (fn [result [elt cnt]]
-                (assoc result elt (+ cnt (get ms1 elt))))
-              (.content ms1) (.content ms2))))
+     (MultiSet. (reduce (fn [result [elt cnt]]
+                          (assoc result elt (+ cnt (get ms1 elt))))
+                        (.content ms1) (.content ms2))
+                (+ (.cnt ms1) (.cnt ms2))))
   ([ms1 ms2 & msets]
      (reduce union ms1 (conj msets ms2))))
 
@@ -75,4 +69,16 @@
 (defn multiset? [x]
   (= (type x) MultiSet))
 
+(defn random-elt
+  ([mset] (random-elt (.content mset) (rand-int (.cnt mset))))
+  ([content index]
+     (if (> (val (first content)) index)
+       (key (first content))
+       (recur (rest content) (- index (val (first content)))))))
 
+(defn filter-ms [pred ms]
+  (let [filtered (into {} (filter (fn [[elt cnt]]
+                                    (pred elt))
+                                  (.content ms)))]
+    (MultiSet. filtered
+               (reduce (fn [total [elt cnt]] (+ total cnt)) 0 filtered))))
